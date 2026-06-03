@@ -5,36 +5,54 @@ WIN=$(xdotool getactivewindow)
 
 eval "$(xdotool getwindowgeometry --shell "$WIN")"
 
-CX=$((X + WIDTH / 2))
-CY=$((Y + HEIGHT / 2))
+CENTER_X=$((X + WIDTH / 2))
+CENTER_Y=$((Y + HEIGHT / 2))
 
-MON=$(xrandr | awk '/ connected/ && /[0-9]+x[0-9]+\+/ {
-  for(i=1;i<=NF;i++){
-    if($i ~ /^[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/){
-      split($i,a,"[x+]")
-      print a[1],a[2],a[3],a[4]
-    }
-  }
-}' | awk -v cx="$CX" -v cy="$CY" '
-cx >= $3 && cx < $3+$1 && cy >= $4 && cy < $4+$2 {print $0; exit}
-')
+MONITOR=$(xrandr --listmonitors | tail -n +2 | awk '
+{
+  geom=$3
+  sub(/\*.*/, "", geom)
+  split(geom,p,"+")
+  split(p[1],wh,"x")
+  split(wh[1],wparts,"/")
+  split(wh[2],hparts,"/")
+  W=wparts[1]
+  H=hparts[1]
+  X=p[2]
+  Y=p[3]
+  print W,H,X,Y
+}' | while read MW MH MX MY
+do
+  if [ "$CENTER_X" -ge "$MX" ] && [ "$CENTER_X" -lt $((MX+MW)) ] && [ "$CENTER_Y" -ge "$MY" ] && [ "$CENTER_Y" -lt $((MY+MH)) ]; then
+    echo "$MW $MH $MX $MY"
+    break
+  fi
+done)
 
-[ -z "$MON" ] && exit 1
+read MW MH MX MY <<< "$MONITOR"
 
-read MW MH MX MY <<< "$MON"
+[ -z "$MW" ] && exit 1
+
+HALF_W=$((MW / 2))
+HALF_H=$((MH / 2))
 
 case "$ACTION" in
-  left)   NX=$MX;              NY=$MY;              NW=$((MW/2)); NH=$MH ;;
-  right)  NX=$((MX+MW/2));     NY=$MY;              NW=$((MW/2)); NH=$MH ;;
-  up)     NX=$MX;              NY=$MY;              NW=$MW;       NH=$((MH/2)) ;;
-  down)   NX=$MX;              NY=$((MY+MH/2));     NW=$MW;       NH=$((MH/2)) ;;
-  ul)     NX=$MX;              NY=$MY;              NW=$((MW/2)); NH=$((MH/2)) ;;
-  ur)     NX=$((MX+MW/2));     NY=$MY;              NW=$((MW/2)); NH=$((MH/2)) ;;
-  dl)     NX=$MX;              NY=$((MY+MH/2));     NW=$((MW/2)); NH=$((MH/2)) ;;
-  dr)     NX=$((MX+MW/2));     NY=$((MY+MH/2));     NW=$((MW/2)); NH=$((MH/2)) ;;
-  max)    NX=$MX;              NY=$MY;              NW=$MW;       NH=$MH ;;
+  ul)    NX=$MX;            NY=$MY;            NW=$HALF_W;       NH=$HALF_H ;;
+  up)    NX=$MX;            NY=$MY;            NW=$MW;           NH=$HALF_H ;;
+  ur)    NX=$((MX+HALF_W)); NY=$MY;            NW=$HALF_W;       NH=$HALF_H ;;
+  left)  NX=$MX;            NY=$MY;            NW=$HALF_W;       NH=$MH ;;
+  max)   NX=$MX;            NY=$MY;            NW=$MW;           NH=$MH ;;
+  right) NX=$((MX+HALF_W)); NY=$MY;            NW=$HALF_W;       NH=$MH ;;
+  dl)    NX=$MX;            NY=$((MY+HALF_H)); NW=$HALF_W;       NH=$HALF_H ;;
+  down)  NX=$MX;            NY=$((MY+HALF_H)); NW=$MW;           NH=$HALF_H ;;
+  dr)    NX=$((MX+HALF_W)); NY=$((MY+HALF_H)); NW=$HALF_W;       NH=$HALF_H ;;
   *) exit 1 ;;
 esac
 
+if [ "$MY" -eq 0 ] && { [ "$ACTION" = "left" ] || [ "$ACTION" = "right" ] || [ "$ACTION" = "max" ]; }; then
+  NH=$((NH-55))
+fi
+
 wmctrl -ir "$WIN" -b remove,maximized_vert,maximized_horz
+sleep 0.05
 wmctrl -ir "$WIN" -e "0,$NX,$NY,$NW,$NH"
